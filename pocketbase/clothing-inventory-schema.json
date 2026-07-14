@@ -1,0 +1,25 @@
+[
+  {
+    "id": "pbc_clothing_inv",
+    "name": "clothing_inventory",
+    "type": "base",
+    "system": false,
+    "fields": [
+      { "autogeneratePattern": "", "hidden": false, "id": "text_item_name", "max": 0, "min": 1, "name": "name", "pattern": "", "presentable": true, "primaryKey": false, "required": true, "system": false, "type": "text" },
+      { "autogeneratePattern": "", "hidden": false, "id": "text_item_code", "max": 0, "min": 0, "name": "code", "pattern": "", "presentable": false, "primaryKey": false, "required": false, "system": false, "type": "text" },
+      { "autogeneratePattern": "", "hidden": false, "id": "text_item_size", "max": 0, "min": 0, "name": "size", "pattern": "", "presentable": false, "primaryKey": false, "required": false, "system": false, "type": "text" },
+      { "autogeneratePattern": "", "hidden": false, "id": "text_item_color", "max": 0, "min": 0, "name": "color", "pattern": "", "presentable": false, "primaryKey": false, "required": false, "system": false, "type": "text" },
+      { "hidden": false, "id": "number_item_cost", "max": null, "min": 0, "name": "cost", "onlyInt": true, "presentable": false, "required": true, "system": false, "type": "number" },
+      { "hidden": false, "id": "number_item_price", "max": null, "min": 0, "name": "price", "onlyInt": true, "presentable": false, "required": true, "system": false, "type": "number" },
+      { "hidden": false, "id": "select_item_status", "maxSelect": 1, "name": "status", "presentable": false, "required": true, "system": false, "type": "select", "values": ["available", "sold"] },
+      { "hidden": false, "id": "file_item_photo", "maxSelect": 1, "maxSize": 10485760, "mimeTypes": ["image/jpeg", "image/png", "image/webp"], "name": "photo", "protected": false, "required": false, "system": false, "thumbs": ["400x300", "900x675"], "type": "file" },
+      { "hidden": false, "id": "date_item_sold", "max": "", "min": "", "name": "sold_at", "presentable": false, "required": false, "system": false, "type": "date" }
+    ],
+    "indexes": ["CREATE INDEX idx_clothing_inventory_status ON clothing_inventory (status)", "CREATE UNIQUE INDEX idx_clothing_inventory_code ON clothing_inventory (code) WHERE code != ''"],
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "",
+    "updateRule": "",
+    "deleteRule": ""
+  }
+]
