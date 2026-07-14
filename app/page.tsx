@@ -266,7 +266,7 @@ export default function Home() {
     try {
       const shared = await sharePreparedContent(saleShare);
       if (!shared) {
-        setNotice("Para enviar la foto a WhatsApp desde iPhone, abre la versión publicada con conexión segura HTTPS.");
+        setNotice("Para enviar la foto a WhatsApp desde el celular, abre la versión publicada con conexión segura HTTPS.");
         return;
       }
       setShareItem(null);
@@ -459,7 +459,7 @@ export default function Home() {
             <div className="confirm-icon">{availableFiles.length}</div>
             <p className="eyebrow">Fotos preparadas</p>
             <h2 id="photos-ready-title">Todas están listas en JPG</h2>
-            <p>En iPhone, pulsa el botón y elige “Guardar imágenes”. También puedes elegir WhatsApp para publicarlas o enviarlas.</p>
+            <p>En iPhone o Android, pulsa el botón y elige guardar las imágenes. También puedes elegir WhatsApp para publicarlas o enviarlas.</p>
             <button className="save full" onClick={saveOrShareAvailablePhotos}>Abrir opciones para guardar</button>
             <button className="cancel full" onClick={() => setAvailableFiles(null)}>Cancelar</button>
           </section>
