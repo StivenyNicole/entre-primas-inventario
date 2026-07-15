@@ -22,7 +22,6 @@ type Item = {
 
 type AddDraft = {
   name: string;
-  code: string;
   size: string;
   color: string;
   audience: ProductAudience;
@@ -31,7 +30,7 @@ type AddDraft = {
   price: string;
 };
 
-const emptyDraft: AddDraft = { name: "", code: "", size: "", color: "", audience: "mujer", category: "blusas", cost: "", price: "" };
+const emptyDraft: AddDraft = { name: "", size: "", color: "", audience: "mujer", category: "blusas", cost: "", price: "" };
 const DRAFT_KEY = "entre-primas-nueva-prenda";
 const PHOTO_DRAFT_KEY = "nueva-prenda-foto";
 
@@ -142,7 +141,7 @@ export default function Home() {
   const visible = useMemo(() => items.filter((item) => {
     const matchesFilter = filter === "all" || item.status === filter;
     const term = search.trim().toLowerCase();
-    const matchesSearch = !term || `${item.name} ${item.code} ${item.size} ${item.color}`.toLowerCase().includes(term);
+    const matchesSearch = !term || `${item.name} ${item.size} ${item.color}`.toLowerCase().includes(term);
     return matchesFilter && matchesSearch;
   }), [items, filter, search]);
 
@@ -385,7 +384,7 @@ export default function Home() {
       <section className="toolbar">
         <label className="search-box">
           <span aria-hidden="true">⌕</span>
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar prenda, talla o código" aria-label="Buscar prendas" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar prenda, talla o color" aria-label="Buscar prendas" />
         </label>
         <div className="toolbar-actions">
           <button className="bulk-download-button" onClick={downloadAllPhotos} disabled={downloading}><span>↓</span> {downloading ? "Guardando fotos…" : "Descargar todas las fotos"}</button>
@@ -420,7 +419,7 @@ export default function Home() {
               </button>
               <div className="product-body">
                 <div className="title-row">
-                  <div><button type="button" className="product-title-button" onClick={() => setDetailItem(item)}>{item.name}</button><p>{item.code || `Prenda #${item.id.slice(0, 6)}`}</p></div>
+                  <div><button type="button" className="product-title-button" onClick={() => setDetailItem(item)}>{item.name}</button></div>
                   <strong className="price">{money.format(item.price)}</strong>
                 </div>
                 <div className="tags"><span>{productCategoryLabel(item)}</span><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span></div>
@@ -511,7 +510,6 @@ export default function Home() {
             <div className="detail-content">
               <p className="eyebrow">{productClassificationFor(detailItem).audience === "hombre" ? "Para hombre" : "Para mujer"} · {productCategoryLabel(detailItem)}</p>
               <h2 id="detail-title">{detailItem.name}</h2>
-              <p className="detail-code">{detailItem.code || `Prenda #${detailItem.id.slice(0, 6)}`}</p>
               <div className="detail-grid">
                 <div><span>Talla</span><strong>{detailItem.size || "Sin talla"}</strong></div>
                 <div><span>Color</span><strong>{detailItem.color || "Sin color"}</strong></div>
@@ -537,7 +535,6 @@ export default function Home() {
               <label className="photo-input"><span>📷</span><strong>{draftPhoto ? `Foto guardada: ${draftPhoto.name}` : "Tomar o elegir foto"}</strong><small>{draftPhoto ? "Puedes continuar; la foto no se perderá." : "JPG, PNG o WEBP"}</small><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] || null; setDraftPhoto(file); saveDraftPhoto(file).catch(() => undefined); }} /></label>
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required placeholder="Ej. Vestido floral" value={addDraft.name} onChange={(event) => updateDraft("name", event.target.value)} /></label>
-                <label><span>Código</span><input name="code" placeholder="VES-024" value={addDraft.code} onChange={(event) => updateDraft("code", event.target.value)} /></label>
                 <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>
                 <label><span>Color</span><input name="color" placeholder="Azul" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={addDraft.audience} onChange={(event) => { const audience = event.target.value as ProductAudience; updateDraft("audience", audience); updateDraft("category", PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
@@ -567,7 +564,6 @@ export default function Home() {
               </label>
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required defaultValue={editItem.name} /></label>
-                <label><span>Código</span><input name="code" defaultValue={editItem.code} /></label>
                 <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>
                 <label><span>Color</span><input name="color" defaultValue={editItem.color} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={editAudience} onChange={(event) => { const audience = event.target.value as ProductAudience; setEditAudience(audience); setEditCategory(PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
@@ -605,7 +601,7 @@ export default function Home() {
             <p className="eyebrow danger-text">Eliminar prenda</p>
             <h2 id="delete-title">¿Eliminar {deleteItem.name}?</h2>
             <p>Se borrará del inventario y esta acción no se puede deshacer.</p>
-            <div className="confirm-details"><span>Prenda</span><strong>{deleteItem.code || deleteItem.name}</strong><span>Estado</span><strong>{deleteItem.status === "sold" ? "Vendida" : "Disponible"}</strong></div>
+            <div className="confirm-details"><span>Prenda</span><strong>{deleteItem.name}</strong><span>Estado</span><strong>{deleteItem.status === "sold" ? "Vendida" : "Disponible"}</strong></div>
             <button className="danger-button full" onClick={() => removeItem(deleteItem)} disabled={saving}>{saving ? "Eliminando…" : "Sí, eliminar definitivamente"}</button>
             <button className="cancel full" onClick={() => setDeleteItem(null)} disabled={saving}>No, conservarla</button>
           </section>

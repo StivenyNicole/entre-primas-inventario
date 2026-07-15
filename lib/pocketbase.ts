@@ -349,7 +349,6 @@ export async function prepareInventorySale(item: InventoryItem): Promise<ShareCo
     "✅ PRENDA VENDIDA · ENTRE PRIMAS",
     "",
     `Prenda: ${item.name}`,
-    item.code ? `Código: ${item.code}` : "",
     item.size ? `Talla: ${item.size}` : "",
     item.color ? `Color: ${item.color}` : "",
     `Precio: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.price)}`,
