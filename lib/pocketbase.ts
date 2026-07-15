@@ -9,6 +9,8 @@ export type InventoryItem = {
   cost: number;
   price: number;
   status: "available" | "sold";
+  paymentStatus: "paid" | "partial";
+  amountPaid: number;
   imageUrl: string | null;
   originalImageUrl: string | null;
   soldAt: string | null;
@@ -27,6 +29,8 @@ type PocketBaseRecord = {
   cost?: number;
   price?: number;
   status?: "available" | "sold";
+  payment_status?: "paid" | "partial";
+  amount_paid?: number;
   photo?: string;
   sold_at?: string;
   created?: string;
@@ -76,6 +80,8 @@ function mapRecord(record: PocketBaseRecord): InventoryItem {
     cost: Number(record.cost || 0),
     price: Number(record.price || 0),
     status: record.status === "sold" ? "sold" : "available",
+    paymentStatus: record.payment_status === "partial" ? "partial" : "paid",
+    amountPaid: record.payment_status === "partial" ? Number(record.amount_paid || 0) : record.status === "sold" ? Number(record.price || 0) : 0,
     imageUrl,
     originalImageUrl,
     soldAt: record.sold_at || null,
@@ -140,11 +146,23 @@ export async function updateInventoryItem(id: string, form: FormData): Promise<I
   return mapRecord(await parseResponse<PocketBaseRecord>(response));
 }
 
-export async function updateInventoryStatus(id: string, status: "available" | "sold"): Promise<InventoryItem> {
+export async function updateInventoryStatus(id: string, status: "available" | "sold", payment?: { paymentStatus: "paid" | "partial"; amountPaid: number }): Promise<InventoryItem> {
+  const body = status === "sold"
+    ? { status, sold_at: new Date().toISOString(), payment_status: payment?.paymentStatus || "paid", amount_paid: payment?.amountPaid || 0 }
+    : { status, sold_at: "", payment_status: "paid", amount_paid: 0 };
   const response = await fetch(`${PB_URL}/api/collections/${COLLECTION}/records/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status, sold_at: status === "sold" ? new Date().toISOString() : "" }),
+    body: JSON.stringify(body),
+  });
+  return mapRecord(await parseResponse<PocketBaseRecord>(response));
+}
+
+export async function completeInventoryPayment(id: string, amountPaid: number): Promise<InventoryItem> {
+  const response = await fetch(`${PB_URL}/api/collections/${COLLECTION}/records/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ payment_status: "paid", amount_paid: amountPaid }),
   });
   return mapRecord(await parseResponse<PocketBaseRecord>(response));
 }
@@ -383,6 +401,7 @@ export async function sharePreparedContent(content: ShareContent): Promise<boole
 }
 
 export async function prepareInventorySale(item: InventoryItem): Promise<ShareContent> {
+  const pending = Math.max(0, item.price - item.amountPaid);
   const text = [
     "✅ PRENDA VENDIDA · ENTRE PRIMAS",
     "",
@@ -390,6 +409,8 @@ export async function prepareInventorySale(item: InventoryItem): Promise<ShareCo
     item.size ? `Talla: ${item.size}` : "",
     item.color ? `Color: ${item.color}` : "",
     `Precio: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.price)}`,
+    item.paymentStatus === "partial" ? `Pago recibido: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.amountPaid)}` : "Pago recibido: completo",
+    item.paymentStatus === "partial" ? `Saldo pendiente: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(pending)}` : "",
   ].filter(Boolean).join("\n");
   const file = item.originalImageUrl ? await itemAsJpeg(item) : null;
   return { title: "Prenda vendida · Entre Primas", text, files: file ? [file] : [] };

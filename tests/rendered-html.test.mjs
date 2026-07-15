@@ -26,6 +26,8 @@ test("el esquema de PocketBase incluye la clasificación de productos", async ()
   const fields = schema[0].fields.map((field) => field.name);
   assert.ok(fields.includes("audience"));
   assert.ok(fields.includes("category"));
+  assert.ok(fields.includes("payment_status"));
+  assert.ok(fields.includes("amount_paid"));
   const category = schema[0].fields.find((field) => field.name === "category");
   assert.ok(category.values.includes("ropa-interior"));
 });

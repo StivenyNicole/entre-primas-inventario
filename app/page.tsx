@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
+import { completeInventoryPayment, createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
 
 type Item = {
   id: string;
@@ -14,6 +14,8 @@ type Item = {
   cost: number;
   price: number;
   status: "available" | "sold";
+  paymentStatus: "paid" | "partial";
+  amountPaid: number;
   imageUrl: string | null;
   originalImageUrl: string | null;
   soldAt: string | null;
@@ -85,7 +87,10 @@ export default function Home() {
   const [editCategory, setEditCategory] = useState<ProductCategory>("blusas");
   const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [confirmItem, setConfirmItem] = useState<Item | null>(null);
+  const [paymentMode, setPaymentMode] = useState<"paid" | "partial">("paid");
+  const [partialPaid, setPartialPaid] = useState("");
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
+  const [settleItem, setSettleItem] = useState<Item | null>(null);
   const [shareItem, setShareItem] = useState<Item | null>(null);
   const [saleShare, setSaleShare] = useState<ShareContent | null>(null);
   const [availableFiles, setAvailableFiles] = useState<File[] | null>(null);
@@ -151,9 +156,11 @@ export default function Home() {
 
   const salesSummary = useMemo(() => soldItems.reduce((summary, item) => ({
     revenue: summary.revenue + item.price,
+    received: summary.received + item.amountPaid,
+    pending: summary.pending + Math.max(0, item.price - item.amountPaid),
     cost: summary.cost + item.cost,
     profit: summary.profit + item.price - item.cost,
-  }), { revenue: 0, cost: 0, profit: 0 }), [soldItems]);
+  }), { revenue: 0, received: 0, pending: 0, cost: 0, profit: 0 }), [soldItems]);
 
   const promotionCounts = useMemo(() => {
     const countsByCategory = Object.fromEntries(PROMOTION_CATEGORIES.map((entry) => [entry.key, 0])) as Record<PromotionCategory, number>;
@@ -228,10 +235,16 @@ export default function Home() {
     }
   }
 
-  async function updateStatus(item: Item, status: "available" | "sold") {
+  function beginSale(item: Item) {
+    setPaymentMode("paid");
+    setPartialPaid("");
+    setConfirmItem(item);
+  }
+
+  async function updateStatus(item: Item, status: "available" | "sold", payment?: { paymentStatus: "paid" | "partial"; amountPaid: number }) {
     setSaving(true);
     try {
-      const updated = await updateInventoryStatus(item.id, status);
+      const updated = await updateInventoryStatus(item.id, status, payment);
       setItems((current) => current.map((row) => row.id === item.id ? updated : row));
       setConfirmItem(null);
       if (status === "sold") {
@@ -246,6 +259,30 @@ export default function Home() {
       }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Ocurrió un problema");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function confirmSale() {
+    if (!confirmItem) return;
+    const amountPaid = paymentMode === "paid" ? confirmItem.price : Number(partialPaid);
+    if (paymentMode === "partial" && (!Number.isFinite(amountPaid) || amountPaid <= 0 || amountPaid >= confirmItem.price)) {
+      setNotice(`Escribe un pago mayor a $0 y menor a ${money.format(confirmItem.price)}.`);
+      return;
+    }
+    updateStatus(confirmItem, "sold", { paymentStatus: paymentMode, amountPaid });
+  }
+
+  async function settlePayment(item: Item) {
+    setSaving(true);
+    try {
+      const updated = await completeInventoryPayment(item.id, item.price);
+      setItems((current) => current.map((row) => row.id === updated.id ? updated : row));
+      setSettleItem(null);
+      flash(`La deuda de ${item.name} quedó pagada`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo actualizar el pago");
     } finally {
       setSaving(false);
     }
@@ -425,12 +462,12 @@ export default function Home() {
                 <div className="tags"><span>{productCategoryLabel(item)}</span><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span></div>
                 <div className="cost-row"><span>Costo</span><strong>{money.format(item.cost)}</strong></div>
                 {item.status === "sold" && (
-                  <div className="sold-info"><strong>Prenda vendida</strong><span>{item.soldAt ? new Date(item.soldAt).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : ""}</span></div>
+                  <div className={`sold-info ${item.paymentStatus === "partial" ? "payment-pending" : ""}`}><strong>{item.paymentStatus === "partial" ? `Vendida · deben ${money.format(Math.max(0, item.price - item.amountPaid))}` : "Vendida · pago completo"}</strong><span>{item.soldAt ? new Date(item.soldAt).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : ""}</span></div>
                 )}
                 {item.status === "available" ? (
-                  <button className="sold-button" onClick={() => setConfirmItem(item)}>✓ Marcar como vendida</button>
+                  <button className="sold-button" onClick={() => beginSale(item)}>✓ Marcar como vendida</button>
                 ) : (
-                  <button className="restore-button" onClick={() => updateStatus(item, "available")} disabled={saving}>↶ Volver a disponible</button>
+                  <>{item.paymentStatus === "partial" && <button className="payment-button" onClick={() => setSettleItem(item)}>✓ Marcar deuda como pagada</button>}<button className="restore-button" onClick={() => updateStatus(item, "available")} disabled={saving}>↶ Volver a disponible</button></>
                 )}
                 <button className="edit-button" onClick={() => beginEdit(item)}>✎ Editar prenda</button>
                 <button className="delete-button" onClick={() => setDeleteItem(item)}>⌫ Eliminar prenda</button>
@@ -450,18 +487,20 @@ export default function Home() {
           <span className="section-pill">{soldItems.length} venta{soldItems.length === 1 ? "" : "s"}</span>
         </div>
         <div className="finance-grid">
-          <article className="finance-card revenue-card"><span>Total vendido</span><strong>{money.format(salesSummary.revenue)}</strong><small>Todo el dinero recibido</small></article>
+          <article className="finance-card revenue-card"><span>Total vendido</span><strong>{money.format(salesSummary.revenue)}</strong><small>Valor de todas las ventas</small></article>
+          <article className="finance-card received-card"><span>Dinero recibido</span><strong>{money.format(salesSummary.received)}</strong><small>Lo que realmente han pagado</small></article>
+          <article className="finance-card pending-card"><span>Pendiente por cobrar</span><strong>{money.format(salesSummary.pending)}</strong><small>Deudas de pagos parciales</small></article>
           <article className="finance-card cost-card"><span>Costos</span><strong>{money.format(salesSummary.cost)}</strong><small>Lo invertido en lo vendido</small></article>
           <article className="finance-card profit-card"><span>Ganancia</span><strong>{money.format(salesSummary.profit)}</strong><small>Ventas menos costos</small></article>
         </div>
         {soldItems.length > 0 ? (
           <div className="sales-list">
-            <div className="sales-list-head"><strong>Prenda vendida</strong><strong>Venta</strong><strong>Ganancia</strong></div>
+            <div className="sales-list-head"><strong>Prenda vendida</strong><strong>Recibido</strong><strong>Pendiente</strong></div>
             {soldItems.map((item) => (
               <div className="sales-list-row" key={`sale-${item.id}`}>
                 <div><strong>{item.name}</strong><small>{item.soldAt ? new Date(item.soldAt).toLocaleDateString("es-CO", { dateStyle: "medium" }) : "Vendida"}</small></div>
-                <strong>{money.format(item.price)}</strong>
-                <strong className={item.price - item.cost >= 0 ? "positive-profit" : "negative-profit"}>{money.format(item.price - item.cost)}</strong>
+                <strong>{money.format(item.amountPaid)}</strong>
+                <strong className={item.paymentStatus === "partial" ? "negative-profit" : "positive-profit"}>{money.format(Math.max(0, item.price - item.amountPaid))}</strong>
               </div>
             ))}
           </div>
@@ -516,6 +555,7 @@ export default function Home() {
                 <div><span>Costo</span><strong>{money.format(detailItem.cost)}</strong></div>
                 <div className="detail-price"><span>Precio de venta</span><strong>{money.format(detailItem.price)}</strong></div>
                 <div className="detail-profit"><span>Ganancia esperada</span><strong>{money.format(detailItem.price - detailItem.cost)}</strong></div>
+                {detailItem.status === "sold" && <div className={detailItem.paymentStatus === "partial" ? "detail-payment-pending" : "detail-payment-paid"}><span>{detailItem.paymentStatus === "partial" ? "Pendiente por cobrar" : "Estado del pago"}</span><strong>{detailItem.paymentStatus === "partial" ? money.format(Math.max(0, detailItem.price - detailItem.amountPaid)) : "Pago completo"}</strong></div>}
               </div>
               {detailItem.status === "sold" && detailItem.soldAt && <p className="detail-sold-date">Vendida el {new Date(detailItem.soldAt).toLocaleString("es-CO", { dateStyle: "long", timeStyle: "short" })}</p>}
               <button className="edit-button detail-edit" onClick={() => { setDetailItem(null); beginEdit(detailItem); }}>✎ Editar esta prenda</button>
@@ -586,9 +626,14 @@ export default function Home() {
             <div className="confirm-icon">✓</div>
             <p className="eyebrow">Confirmar venta</p>
             <h2 id="confirm-title">¿Vendiste {confirmItem.name}?</h2>
-            <p>La otra socia la verá como vendida inmediatamente.</p>
+            <p>Indica cómo pagó la clienta. La otra socia verá la venta inmediatamente.</p>
             <div className="confirm-details"><span>Precio de venta</span><strong>{money.format(confirmItem.price)}</strong></div>
-            <button className="save full" onClick={() => updateStatus(confirmItem, "sold")} disabled={saving}>{saving ? "Marcando…" : "Sí, marcar como vendida"}</button>
+            <div className="payment-options" role="group" aria-label="Forma de pago">
+              <button type="button" className={paymentMode === "paid" ? "active" : ""} onClick={() => setPaymentMode("paid")}><strong>Pago completo</strong><span>Pagaron todo</span></button>
+              <button type="button" className={paymentMode === "partial" ? "active" : ""} onClick={() => setPaymentMode("partial")}><strong>Pago parcial</strong><span>Quedaron debiendo</span></button>
+            </div>
+            {paymentMode === "partial" && <label className="partial-payment-input"><span>¿Cuánto pagaron?</span><input type="number" min="1" max={Math.max(1, confirmItem.price - 1)} inputMode="numeric" placeholder="Ej. 30000" value={partialPaid} onChange={(event) => setPartialPaid(event.target.value)} autoFocus /><small>Quedarán debiendo: {money.format(Math.max(0, confirmItem.price - Number(partialPaid || 0)))}</small></label>}
+            <button className="save full" onClick={confirmSale} disabled={saving}>{saving ? "Marcando…" : paymentMode === "partial" ? "Marcar vendida con saldo pendiente" : "Marcar vendida y pagada"}</button>
             <button className="cancel full" onClick={() => setConfirmItem(null)}>No, volver</button>
           </section>
         </div>
@@ -604,6 +649,19 @@ export default function Home() {
             <div className="confirm-details"><span>Prenda</span><strong>{deleteItem.name}</strong><span>Estado</span><strong>{deleteItem.status === "sold" ? "Vendida" : "Disponible"}</strong></div>
             <button className="danger-button full" onClick={() => removeItem(deleteItem)} disabled={saving}>{saving ? "Eliminando…" : "Sí, eliminar definitivamente"}</button>
             <button className="cancel full" onClick={() => setDeleteItem(null)} disabled={saving}>No, conservarla</button>
+          </section>
+        </div>
+      )}
+
+      {settleItem && (
+        <div className="modal-backdrop">
+          <section className="confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="settle-title">
+            <div className="confirm-icon">$</div>
+            <p className="eyebrow">Completar pago</p>
+            <h2 id="settle-title">¿Ya pagaron toda la deuda?</h2>
+            <p>El saldo pendiente de {settleItem.name} es {money.format(Math.max(0, settleItem.price - settleItem.amountPaid))}.</p>
+            <button className="save full" onClick={() => settlePayment(settleItem)} disabled={saving}>{saving ? "Actualizando…" : "Sí, marcar como pagada"}</button>
+            <button className="cancel full" onClick={() => setSettleItem(null)} disabled={saving}>Todavía no</button>
           </section>
         </div>
       )}
