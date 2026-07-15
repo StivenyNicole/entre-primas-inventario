@@ -3,13 +3,10 @@
   "name": "entre-primas-inventario",
   "compatibility_date": "2026-07-14",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "./worker/index.ts",
+  "main": "vinext/server/app-router-entry",
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
     "binding": "ASSETS"
-  },
-  "images": {
-    "binding": "IMAGES"
   }
 }
