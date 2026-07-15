@@ -8,6 +8,8 @@ La aplicación usa la colección `clothing_inventory` y guarda allí tanto los d
 2. En **Settings → Import collections**, selecciona `clothing-inventory-schema.json`.
 3. Confirma la importación.
 
+Si la colección ya existe, vuelve a importar el mismo archivo y confirma la actualización. PocketBase conservará los registros y añadirá los campos opcionales `audience` y `category` usados para organizar los collages.
+
 El esquema habilita lectura, creación, actualización y eliminación sin autenticación para que la aplicación sea de una sola vista. La interfaz siempre pide confirmación antes de eliminar. Antes de hacer pública la aplicación conviene añadir una clave compartida o autenticación sencilla.
 
 ## Configuración

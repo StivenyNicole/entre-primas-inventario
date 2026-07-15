@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PROMOTION_CATEGORIES, promotionCategoryFor, sharePreparedContent, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
+import { createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
 
 type Item = {
   id: string;
@@ -9,6 +9,8 @@ type Item = {
   code: string;
   size: string;
   color: string;
+  audience: ProductAudience;
+  category: ProductCategory | "";
   cost: number;
   price: number;
   status: "available" | "sold";
@@ -23,11 +25,13 @@ type AddDraft = {
   code: string;
   size: string;
   color: string;
+  audience: ProductAudience;
+  category: ProductCategory;
   cost: string;
   price: string;
 };
 
-const emptyDraft: AddDraft = { name: "", code: "", size: "", color: "", cost: "", price: "" };
+const emptyDraft: AddDraft = { name: "", code: "", size: "", color: "", audience: "mujer", category: "blusas", cost: "", price: "" };
 const DRAFT_KEY = "entre-primas-nueva-prenda";
 const PHOTO_DRAFT_KEY = "nueva-prenda-foto";
 
@@ -78,6 +82,9 @@ export default function Home() {
   const [addDraft, setAddDraft] = useState<AddDraft>(emptyDraft);
   const [draftPhoto, setDraftPhoto] = useState<File | null>(null);
   const [editItem, setEditItem] = useState<Item | null>(null);
+  const [editAudience, setEditAudience] = useState<ProductAudience>("mujer");
+  const [editCategory, setEditCategory] = useState<ProductCategory>("blusas");
+  const [detailItem, setDetailItem] = useState<Item | null>(null);
   const [confirmItem, setConfirmItem] = useState<Item | null>(null);
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
   const [shareItem, setShareItem] = useState<Item | null>(null);
@@ -150,14 +157,14 @@ export default function Home() {
   }), { revenue: 0, cost: 0, profit: 0 }), [soldItems]);
 
   const promotionCounts = useMemo(() => {
-    const countsByCategory: Record<PromotionCategory, number> = { blusas: 0, pantalones: 0, maquillaje: 0, otros: 0 };
+    const countsByCategory = Object.fromEntries(PROMOTION_CATEGORIES.map((entry) => [entry.key, 0])) as Record<PromotionCategory, number>;
     items.forEach((item) => {
       if (item.status === "available" && item.originalImageUrl) countsByCategory[promotionCategoryFor(item)] += 1;
     });
     return countsByCategory;
   }, [items]);
 
-  function updateDraft(field: keyof AddDraft, value: string) {
+  function updateDraft<K extends keyof AddDraft>(field: K, value: AddDraft[K]) {
     setAddDraft((current) => {
       const next = { ...current, [field]: value };
       window.localStorage.setItem(DRAFT_KEY, JSON.stringify(next));
@@ -171,6 +178,13 @@ export default function Home() {
     setDraftPhoto(null);
     window.localStorage.removeItem(DRAFT_KEY);
     saveDraftPhoto(null).catch(() => undefined);
+  }
+
+  function beginEdit(item: Item) {
+    const classification = productClassificationFor(item);
+    setEditAudience(classification.audience);
+    setEditCategory(classification.category);
+    setEditItem(item);
   }
 
   async function addItem(event: FormEvent<HTMLFormElement>) {
@@ -399,16 +413,17 @@ export default function Home() {
         <section className="product-grid" aria-live="polite">
           {visible.map((item) => (
             <article className={`product-card ${item.status}`} key={item.id}>
-              <div className="photo-wrap">
+              <button type="button" className="photo-wrap product-preview-button" onClick={() => setDetailItem(item)} aria-label={`Ver detalles de ${item.name}`}>
                 {item.imageUrl ? <img src={item.imageUrl} alt={item.name} /> : <div className="photo-placeholder"><span>👚</span><small>Sin foto</small></div>}
                 <span className={`badge ${item.status}`}>{item.status === "available" ? "● Disponible" : "✓ Vendida"}</span>
-              </div>
+                <span className="view-hint">Ver detalles</span>
+              </button>
               <div className="product-body">
                 <div className="title-row">
-                  <div><h3>{item.name}</h3><p>{item.code || `Prenda #${item.id.slice(0, 6)}`}</p></div>
+                  <div><button type="button" className="product-title-button" onClick={() => setDetailItem(item)}>{item.name}</button><p>{item.code || `Prenda #${item.id.slice(0, 6)}`}</p></div>
                   <strong className="price">{money.format(item.price)}</strong>
                 </div>
-                <div className="tags"><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span></div>
+                <div className="tags"><span>{productCategoryLabel(item)}</span><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span></div>
                 <div className="cost-row"><span>Costo</span><strong>{money.format(item.cost)}</strong></div>
                 {item.status === "sold" && (
                   <div className="sold-info"><strong>Prenda vendida</strong><span>{item.soldAt ? new Date(item.soldAt).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : ""}</span></div>
@@ -418,7 +433,7 @@ export default function Home() {
                 ) : (
                   <button className="restore-button" onClick={() => updateStatus(item, "available")} disabled={saving}>↶ Volver a disponible</button>
                 )}
-                <button className="edit-button" onClick={() => setEditItem(item)}>✎ Editar prenda</button>
+                <button className="edit-button" onClick={() => beginEdit(item)}>✎ Editar prenda</button>
                 <button className="delete-button" onClick={() => setDeleteItem(item)}>⌫ Eliminar prenda</button>
               </div>
             </article>
@@ -462,23 +477,54 @@ export default function Home() {
             <p>La aplicación organiza los productos por su nombre y crea collages con el logo de Entre Primas.</p>
           </div>
         </div>
-        <div className="promotion-grid">
-          {PROMOTION_CATEGORIES.map((category) => {
-            const count = promotionCounts[category.key];
-            const collageCount = Math.ceil(count / 4);
-            return (
-              <article className="promotion-card" key={category.key}>
-                <div className="promotion-icon">{category.icon}</div>
-                <div className="promotion-copy"><h3>{category.label}</h3><p>{count} disponible{count === 1 ? "" : "s"} con foto</p>{count > 4 && <small>Se crearán {collageCount} collages equilibrados</small>}</div>
-                <button onClick={() => createPromotionCollages(category.key)} disabled={count === 0 || collagePreparing !== null}>
-                  {collagePreparing === category.key ? "Creando…" : "Crear collage"}
-                </button>
-              </article>
-            );
-          })}
-        </div>
-        <p className="category-help">Clasificación automática: nombres como “blusa”, “jean” o “labial” se ubican en su grupo. Los demás aparecen en Otros.</p>
+        {(["mujer", "hombre"] as ProductAudience[]).map((audience) => (
+          <div className="promotion-audience" key={audience}>
+            <h3>{audience === "mujer" ? "Productos para mujer" : "Productos para hombre"}</h3>
+            <div className="promotion-grid">
+              {PROMOTION_CATEGORIES.filter((category) => category.audience === audience).map((category) => {
+                const count = promotionCounts[category.key];
+                const collageCount = Math.ceil(count / 4);
+                return (
+                  <article className="promotion-card" key={category.key}>
+                    <div className="promotion-icon">{category.icon}</div>
+                    <div className="promotion-copy"><h3>{category.label}</h3><p>{count} disponible{count === 1 ? "" : "s"} con foto</p>{count > 4 && <small>Se crearán {collageCount} collages equilibrados</small>}</div>
+                    <button onClick={() => createPromotionCollages(category.key)} disabled={count === 0 || collagePreparing !== null}>
+                      {collagePreparing === category.key ? "Creando…" : "Crear collage"}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <p className="category-help">Las prendas nuevas usan la categoría elegida. Las prendas antiguas siguen clasificándose automáticamente por su nombre hasta que las edites.</p>
       </section>
+
+      {detailItem && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDetailItem(null)}>
+          <section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+            <button className="modal-close detail-close" onClick={() => setDetailItem(null)} aria-label="Cerrar">×</button>
+            <div className="detail-photo">
+              {detailItem.imageUrl ? <img src={detailItem.imageUrl} alt={detailItem.name} /> : <div className="photo-placeholder"><span>👚</span><small>Sin foto</small></div>}
+              <span className={`badge ${detailItem.status}`}>{detailItem.status === "available" ? "● Disponible" : "✓ Vendida"}</span>
+            </div>
+            <div className="detail-content">
+              <p className="eyebrow">{productClassificationFor(detailItem).audience === "hombre" ? "Para hombre" : "Para mujer"} · {productCategoryLabel(detailItem)}</p>
+              <h2 id="detail-title">{detailItem.name}</h2>
+              <p className="detail-code">{detailItem.code || `Prenda #${detailItem.id.slice(0, 6)}`}</p>
+              <div className="detail-grid">
+                <div><span>Talla</span><strong>{detailItem.size || "Sin talla"}</strong></div>
+                <div><span>Color</span><strong>{detailItem.color || "Sin color"}</strong></div>
+                <div><span>Costo</span><strong>{money.format(detailItem.cost)}</strong></div>
+                <div className="detail-price"><span>Precio de venta</span><strong>{money.format(detailItem.price)}</strong></div>
+                <div className="detail-profit"><span>Ganancia esperada</span><strong>{money.format(detailItem.price - detailItem.cost)}</strong></div>
+              </div>
+              {detailItem.status === "sold" && detailItem.soldAt && <p className="detail-sold-date">Vendida el {new Date(detailItem.soldAt).toLocaleString("es-CO", { dateStyle: "long", timeStyle: "short" })}</p>}
+              <button className="edit-button detail-edit" onClick={() => { setDetailItem(null); beginEdit(detailItem); }}>✎ Editar esta prenda</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showAdd && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeAddForm()}>
@@ -494,6 +540,8 @@ export default function Home() {
                 <label><span>Código</span><input name="code" placeholder="VES-024" value={addDraft.code} onChange={(event) => updateDraft("code", event.target.value)} /></label>
                 <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>
                 <label><span>Color</span><input name="color" placeholder="Azul" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
+                <label><span>¿Para quién es? *</span><select name="audience" value={addDraft.audience} onChange={(event) => { const audience = event.target.value as ProductAudience; updateDraft("audience", audience); updateDraft("category", PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
+                <label><span>Tipo de producto *</span><select name="category" value={addDraft.category} onChange={(event) => updateDraft("category", event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[addDraft.audience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required placeholder="65000" inputMode="numeric" value={addDraft.cost} onChange={(event) => updateDraft("cost", event.target.value)} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required placeholder="120000" inputMode="numeric" value={addDraft.price} onChange={(event) => updateDraft("price", event.target.value)} /></label>
               </div>
@@ -522,6 +570,8 @@ export default function Home() {
                 <label><span>Código</span><input name="code" defaultValue={editItem.code} /></label>
                 <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>
                 <label><span>Color</span><input name="color" defaultValue={editItem.color} /></label>
+                <label><span>¿Para quién es? *</span><select name="audience" value={editAudience} onChange={(event) => { const audience = event.target.value as ProductAudience; setEditAudience(audience); setEditCategory(PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
+                <label><span>Tipo de producto *</span><select name="category" value={editCategory} onChange={(event) => setEditCategory(event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[editAudience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required inputMode="numeric" defaultValue={editItem.cost} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required inputMode="numeric" defaultValue={editItem.price} /></label>
               </div>

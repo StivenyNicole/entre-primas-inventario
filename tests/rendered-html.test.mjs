@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("renderiza el inventario de Entre Primas", async () => {
@@ -16,4 +17,12 @@ test("renderiza el inventario de Entre Primas", async () => {
   assert.match(html, /Inventario compartido/i);
   assert.match(html, /Resumen de ventas/i);
   assert.match(html, /Promocionar productos disponibles/i);
+  assert.match(html, /Productos para hombre/i);
+});
+
+test("el esquema de PocketBase incluye la clasificación de productos", async () => {
+  const schema = JSON.parse(await readFile(new URL("../pocketbase/clothing-inventory-schema.json", import.meta.url), "utf8"));
+  const fields = schema[0].fields.map((field) => field.name);
+  assert.ok(fields.includes("audience"));
+  assert.ok(fields.includes("category"));
 });

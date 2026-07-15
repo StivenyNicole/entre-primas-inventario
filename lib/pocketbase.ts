@@ -4,6 +4,8 @@ export type InventoryItem = {
   code: string;
   size: string;
   color: string;
+  audience: ProductAudience;
+  category: ProductCategory | "";
   cost: number;
   price: number;
   status: "available" | "sold";
@@ -20,6 +22,8 @@ type PocketBaseRecord = {
   code?: string;
   size?: string;
   color?: string;
+  audience?: ProductAudience;
+  category?: ProductCategory;
   cost?: number;
   price?: number;
   status?: "available" | "sold";
@@ -67,6 +71,8 @@ function mapRecord(record: PocketBaseRecord): InventoryItem {
     code: record.code || "",
     size: record.size || "",
     color: record.color || "",
+    audience: record.audience === "hombre" ? "hombre" : "mujer",
+    category: record.category || "",
     cost: Number(record.cost || 0),
     price: Number(record.price || 0),
     status: record.status === "sold" ? "sold" : "available",
@@ -195,21 +201,51 @@ export type ShareContent = {
   files: File[];
 };
 
-export type PromotionCategory = "blusas" | "pantalones" | "maquillaje" | "otros";
+export type ProductAudience = "mujer" | "hombre";
+export type ProductCategory = "blusas" | "busos" | "pantalones" | "maquillaje" | "bolsos" | "camisas" | "pantalonetas" | "otros";
+export type PromotionCategory = `${ProductAudience}-${ProductCategory}`;
 
-export const PROMOTION_CATEGORIES: Array<{ key: PromotionCategory; label: string; icon: string }> = [
-  { key: "blusas", label: "Blusas", icon: "👚" },
-  { key: "pantalones", label: "Pantalones", icon: "👖" },
-  { key: "maquillaje", label: "Maquillaje", icon: "💄" },
-  { key: "otros", label: "Otros", icon: "✨" },
-];
+export const PRODUCT_CATEGORIES: Record<ProductAudience, Array<{ key: ProductCategory; label: string }>> = {
+  mujer: [
+    { key: "blusas", label: "Blusas" }, { key: "busos", label: "Busos" }, { key: "pantalones", label: "Pantalones" },
+    { key: "maquillaje", label: "Maquillaje" }, { key: "bolsos", label: "Bolsos" }, { key: "otros", label: "Otros" },
+  ],
+  hombre: [
+    { key: "busos", label: "Busos" }, { key: "camisas", label: "Camisas" }, { key: "pantalonetas", label: "Pantalonetas" }, { key: "otros", label: "Otros" },
+  ],
+};
 
-export function promotionCategoryFor(item: Pick<InventoryItem, "name">): PromotionCategory {
+const CATEGORY_ICONS: Record<ProductCategory, string> = { blusas: "👚", busos: "🧥", pantalones: "👖", maquillaje: "💄", bolsos: "👜", camisas: "👔", pantalonetas: "🩳", otros: "✨" };
+
+export const PROMOTION_CATEGORIES: Array<{ key: PromotionCategory; audience: ProductAudience; category: ProductCategory; label: string; icon: string }> = (["mujer", "hombre"] as ProductAudience[]).flatMap((audience) =>
+  PRODUCT_CATEGORIES[audience].map((category) => ({ key: `${audience}-${category.key}` as PromotionCategory, audience, category: category.key, label: category.label, icon: CATEGORY_ICONS[category.key] })),
+);
+
+function inferredCategory(item: Pick<InventoryItem, "name">): ProductCategory {
   const name = item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (/\b(blusa|camisa|camiseta|top|crop|body|bodysuit)\b/.test(name)) return "blusas";
+  if (/\b(buso|busos|buzo|buzos|hoodie|sudadera)\b/.test(name)) return "busos";
   if (/\b(pantalon|pantalones|jean|jeans|legging|leggings|jogger|joggers|short|shorts)\b/.test(name)) return "pantalones";
   if (/\b(maquillaje|labial|base|sombra|pestana|pestanas|rimel|mascara|delineador|polvo|rubor|gloss|corrector)\b/.test(name)) return "maquillaje";
+  if (/\b(bolso|bolsos|cartera|carteras|morral|morral|mochila|mochilas)\b/.test(name)) return "bolsos";
   return "otros";
+}
+
+export function productClassificationFor(item: Pick<InventoryItem, "name" | "audience" | "category">): { audience: ProductAudience; category: ProductCategory } {
+  const audience = item.audience === "hombre" ? "hombre" : "mujer";
+  let category = item.category || inferredCategory(item);
+  if (!PRODUCT_CATEGORIES[audience].some((entry) => entry.key === category)) category = "otros";
+  return { audience, category };
+}
+
+export function promotionCategoryFor(item: Pick<InventoryItem, "name" | "audience" | "category">): PromotionCategory {
+  const classification = productClassificationFor(item);
+  return `${classification.audience}-${classification.category}`;
+}
+
+export function productCategoryLabel(item: Pick<InventoryItem, "name" | "audience" | "category">): string {
+  const classification = productClassificationFor(item);
+  return PRODUCT_CATEGORIES[classification.audience].find((entry) => entry.key === classification.category)?.label || "Otros";
 }
 
 function balancedGroups<T>(items: T[]): T[][] {
@@ -284,7 +320,8 @@ export async function preparePromotionCollages(items: InventoryItem[], category:
   const available = items.filter((item) => item.status === "available" && item.originalImageUrl && promotionCategoryFor(item) === category);
   if (!available.length || !categoryInfo) throw new Error("No hay productos con foto disponibles en esta categoría.");
   const groups = balancedGroups(available);
-  return Promise.all(groups.map((group, index) => createCollage(group, categoryInfo.label, index)));
+  const label = `${categoryInfo.label} ${categoryInfo.audience === "hombre" ? "para hombre" : "para mujer"}`;
+  return Promise.all(groups.map((group, index) => createCollage(group, label, index)));
 }
 
 export async function prepareAvailablePhotos(items: InventoryItem[]): Promise<File[]> {
