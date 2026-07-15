@@ -513,11 +513,11 @@ export default function Home() {
           <div className="sales-list">
             <div className="sales-list-head"><strong>Prenda vendida</strong><strong>Recibido</strong><strong>Pendiente</strong></div>
             {soldItems.map((item) => (
-              <div className="sales-list-row" key={`sale-${item.id}`}>
+              <button type="button" className="sales-list-row" key={`sale-${item.id}`} onClick={() => setDetailItem(item)} aria-label={`Ver detalles de la venta de ${item.name}`}>
                 <div><strong>{item.name}</strong><small>{item.paymentStatus === "partial" && item.debtorName ? `${item.debtorName} · ` : ""}{item.soldAt ? new Date(item.soldAt).toLocaleDateString("es-CO", { dateStyle: "medium" }) : "Vendida"}</small></div>
                 <strong>{money.format(item.amountPaid)}</strong>
                 <strong className={item.paymentStatus === "partial" ? "negative-profit" : "positive-profit"}>{money.format(Math.max(0, item.price - item.amountPaid))}</strong>
-              </div>
+              </button>
             ))}
           </div>
         ) : <p className="business-empty">Cuando marques la primera venta, aquí aparecerán los totales y la ganancia.</p>}
@@ -572,6 +572,7 @@ export default function Home() {
                 <div><span>Costo</span><strong>{money.format(detailItem.cost)}</strong></div>
                 <div className="detail-price"><span>Precio de venta</span><strong>{money.format(detailItem.price)}</strong></div>
                 <div className="detail-profit"><span>Ganancia esperada</span><strong>{money.format(detailItem.price - detailItem.cost)}</strong></div>
+                {detailItem.status === "sold" && <div className="detail-payment-received"><span>Dinero recibido</span><strong>{money.format(detailItem.amountPaid)}</strong></div>}
                 {detailItem.status === "sold" && <div className={detailItem.paymentStatus === "partial" ? "detail-payment-pending" : "detail-payment-paid"}><span>{detailItem.paymentStatus === "partial" ? `${detailItem.debtorName || "Clienta"} debe` : "Estado del pago"}</span><strong>{detailItem.paymentStatus === "partial" ? money.format(Math.max(0, detailItem.price - detailItem.amountPaid)) : "Pago completo"}</strong></div>}
               </div>
               {detailItem.status === "sold" && detailItem.soldAt && <p className="detail-sold-date">Vendida el {new Date(detailItem.soldAt).toLocaleString("es-CO", { dateStyle: "long", timeStyle: "short" })}</p>}
