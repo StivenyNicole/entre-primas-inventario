@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, sharePreparedContent, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
+import { createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PROMOTION_CATEGORIES, promotionCategoryFor, sharePreparedContent, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
 
 type Item = {
   id: string;
@@ -83,6 +83,9 @@ export default function Home() {
   const [shareItem, setShareItem] = useState<Item | null>(null);
   const [saleShare, setSaleShare] = useState<ShareContent | null>(null);
   const [availableFiles, setAvailableFiles] = useState<File[] | null>(null);
+  const [collageFiles, setCollageFiles] = useState<File[] | null>(null);
+  const [collageCategory, setCollageCategory] = useState<PromotionCategory | null>(null);
+  const [collagePreparing, setCollagePreparing] = useState<PromotionCategory | null>(null);
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [notice, setNotice] = useState("");
@@ -135,6 +138,24 @@ export default function Home() {
     const matchesSearch = !term || `${item.name} ${item.code} ${item.size} ${item.color}`.toLowerCase().includes(term);
     return matchesFilter && matchesSearch;
   }), [items, filter, search]);
+
+  const soldItems = useMemo(() => items
+    .filter((item) => item.status === "sold")
+    .sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || "")), [items]);
+
+  const salesSummary = useMemo(() => soldItems.reduce((summary, item) => ({
+    revenue: summary.revenue + item.price,
+    cost: summary.cost + item.cost,
+    profit: summary.profit + item.price - item.cost,
+  }), { revenue: 0, cost: 0, profit: 0 }), [soldItems]);
+
+  const promotionCounts = useMemo(() => {
+    const countsByCategory: Record<PromotionCategory, number> = { blusas: 0, pantalones: 0, maquillaje: 0, otros: 0 };
+    items.forEach((item) => {
+      if (item.status === "available" && item.originalImageUrl) countsByCategory[promotionCategoryFor(item)] += 1;
+    });
+    return countsByCategory;
+  }, [items]);
 
   function updateDraft(field: keyof AddDraft, value: string) {
     setAddDraft((current) => {
@@ -261,6 +282,40 @@ export default function Home() {
     }
   }
 
+  async function createPromotionCollages(category: PromotionCategory) {
+    setCollagePreparing(category);
+    try {
+      const files = await preparePromotionCollages(items, category);
+      setCollageCategory(category);
+      setCollageFiles(files);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudieron crear los collages");
+    } finally {
+      setCollagePreparing(null);
+    }
+  }
+
+  async function saveOrShareCollages() {
+    if (!collageFiles || !collageCategory) return;
+    const category = PROMOTION_CATEGORIES.find((entry) => entry.key === collageCategory);
+    try {
+      const shared = await sharePreparedContent({
+        title: `${category?.label || "Productos"} disponibles · Entre Primas`,
+        text: `${category?.label || "Productos"} disponibles en Entre Primas`,
+        files: collageFiles,
+      });
+      if (!shared) {
+        downloadPreparedFiles(collageFiles);
+        flash(`${collageFiles.length} collage${collageFiles.length === 1 ? "" : "s"} guardado${collageFiles.length === 1 ? "" : "s"} en JPG`);
+      }
+      setCollageFiles(null);
+      setCollageCategory(null);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setNotice(error instanceof Error ? error.message : "No se pudieron compartir los collages");
+    }
+  }
+
   async function shareSale() {
     if (!saleShare) return;
     try {
@@ -371,6 +426,60 @@ export default function Home() {
         </section>
       )}
 
+      <section className="business-section sales-section" aria-labelledby="sales-title">
+        <div className="business-heading">
+          <div>
+            <p className="eyebrow">Resultados del negocio</p>
+            <h2 id="sales-title">Resumen de ventas</h2>
+            <p>Se calcula automáticamente con las prendas marcadas como vendidas.</p>
+          </div>
+          <span className="section-pill">{soldItems.length} venta{soldItems.length === 1 ? "" : "s"}</span>
+        </div>
+        <div className="finance-grid">
+          <article className="finance-card revenue-card"><span>Total vendido</span><strong>{money.format(salesSummary.revenue)}</strong><small>Todo el dinero recibido</small></article>
+          <article className="finance-card cost-card"><span>Costos</span><strong>{money.format(salesSummary.cost)}</strong><small>Lo invertido en lo vendido</small></article>
+          <article className="finance-card profit-card"><span>Ganancia</span><strong>{money.format(salesSummary.profit)}</strong><small>Ventas menos costos</small></article>
+        </div>
+        {soldItems.length > 0 ? (
+          <div className="sales-list">
+            <div className="sales-list-head"><strong>Prenda vendida</strong><strong>Venta</strong><strong>Ganancia</strong></div>
+            {soldItems.map((item) => (
+              <div className="sales-list-row" key={`sale-${item.id}`}>
+                <div><strong>{item.name}</strong><small>{item.soldAt ? new Date(item.soldAt).toLocaleDateString("es-CO", { dateStyle: "medium" }) : "Vendida"}</small></div>
+                <strong>{money.format(item.price)}</strong>
+                <strong className={item.price - item.cost >= 0 ? "positive-profit" : "negative-profit"}>{money.format(item.price - item.cost)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : <p className="business-empty">Cuando marques la primera venta, aquí aparecerán los totales y la ganancia.</p>}
+      </section>
+
+      <section className="business-section promotion-section" aria-labelledby="promotion-title">
+        <div className="business-heading">
+          <div>
+            <p className="eyebrow">Material para estados</p>
+            <h2 id="promotion-title">Promocionar productos disponibles</h2>
+            <p>La aplicación organiza los productos por su nombre y crea collages con el logo de Entre Primas.</p>
+          </div>
+        </div>
+        <div className="promotion-grid">
+          {PROMOTION_CATEGORIES.map((category) => {
+            const count = promotionCounts[category.key];
+            const collageCount = Math.ceil(count / 4);
+            return (
+              <article className="promotion-card" key={category.key}>
+                <div className="promotion-icon">{category.icon}</div>
+                <div className="promotion-copy"><h3>{category.label}</h3><p>{count} disponible{count === 1 ? "" : "s"} con foto</p>{count > 4 && <small>Se crearán {collageCount} collages equilibrados</small>}</div>
+                <button onClick={() => createPromotionCollages(category.key)} disabled={count === 0 || collagePreparing !== null}>
+                  {collagePreparing === category.key ? "Creando…" : "Crear collage"}
+                </button>
+              </article>
+            );
+          })}
+        </div>
+        <p className="category-help">Clasificación automática: nombres como “blusa”, “jean” o “labial” se ubican en su grupo. Los demás aparecen en Otros.</p>
+      </section>
+
       {showAdd && (
         <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && closeAddForm()}>
           <section className="modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
@@ -462,6 +571,19 @@ export default function Home() {
             <p>En iPhone o Android, pulsa el botón y elige guardar las imágenes. También puedes elegir WhatsApp para publicarlas o enviarlas.</p>
             <button className="save full" onClick={saveOrShareAvailablePhotos}>Abrir opciones para guardar</button>
             <button className="cancel full" onClick={() => setAvailableFiles(null)}>Cancelar</button>
+          </section>
+        </div>
+      )}
+
+      {collageFiles && collageCategory && (
+        <div className="modal-backdrop">
+          <section className="confirm-modal share-modal" role="dialog" aria-modal="true" aria-labelledby="collages-ready-title">
+            <div className="confirm-icon">{collageFiles.length}</div>
+            <p className="eyebrow">Collages listos</p>
+            <h2 id="collages-ready-title">{PROMOTION_CATEGORIES.find((entry) => entry.key === collageCategory)?.label} listas para promocionar</h2>
+            <p>Cada collage está en JPG, muestra hasta cuatro productos disponibles y lleva el logo de Entre Primas en el centro.</p>
+            <button className="save full" onClick={saveOrShareCollages}>Guardar o compartir collages</button>
+            <button className="cancel full" onClick={() => { setCollageFiles(null); setCollageCategory(null); }}>Cancelar</button>
           </section>
         </div>
       )}

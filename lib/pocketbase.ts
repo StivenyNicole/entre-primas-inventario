@@ -195,6 +195,98 @@ export type ShareContent = {
   files: File[];
 };
 
+export type PromotionCategory = "blusas" | "pantalones" | "maquillaje" | "otros";
+
+export const PROMOTION_CATEGORIES: Array<{ key: PromotionCategory; label: string; icon: string }> = [
+  { key: "blusas", label: "Blusas", icon: "👚" },
+  { key: "pantalones", label: "Pantalones", icon: "👖" },
+  { key: "maquillaje", label: "Maquillaje", icon: "💄" },
+  { key: "otros", label: "Otros", icon: "✨" },
+];
+
+export function promotionCategoryFor(item: Pick<InventoryItem, "name">): PromotionCategory {
+  const name = item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\b(blusa|camisa|camiseta|top|crop|body|bodysuit)\b/.test(name)) return "blusas";
+  if (/\b(pantalon|pantalones|jean|jeans|legging|leggings|jogger|joggers|short|shorts)\b/.test(name)) return "pantalones";
+  if (/\b(maquillaje|labial|base|sombra|pestana|pestanas|rimel|mascara|delineador|polvo|rubor|gloss|corrector)\b/.test(name)) return "maquillaje";
+  return "otros";
+}
+
+function balancedGroups<T>(items: T[]): T[][] {
+  const groupCount = Math.ceil(items.length / 4);
+  const baseSize = Math.floor(items.length / groupCount);
+  let largerGroups = items.length % groupCount;
+  let offset = 0;
+  return Array.from({ length: groupCount }, () => {
+    const size = baseSize + (largerGroups-- > 0 ? 1 : 0);
+    const group = items.slice(offset, offset + size);
+    offset += size;
+    return group;
+  });
+}
+
+function drawImageCover(context: CanvasRenderingContext2D, image: ImageBitmap | HTMLImageElement, x: number, y: number, width: number, height: number) {
+  const scale = Math.max(width / image.width, height / image.height);
+  const sourceWidth = width / scale;
+  const sourceHeight = height / scale;
+  const sourceX = (image.width - sourceWidth) / 2;
+  const sourceY = (image.height - sourceHeight) / 2;
+  context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+function collageSlots(count: number): Array<[number, number, number, number]> {
+  const gap = 12;
+  const full = 1080;
+  const half = (full - gap) / 2;
+  if (count === 1) return [[0, 0, full, full]];
+  if (count === 2) return [[0, 0, half, full], [half + gap, 0, half, full]];
+  if (count === 3) return [[0, 0, half, full], [half + gap, 0, half, half], [half + gap, half + gap, half, half]];
+  return [[0, 0, half, half], [half + gap, 0, half, half], [0, half + gap, half, half], [half + gap, half + gap, half, half]];
+}
+
+async function createCollage(items: InventoryItem[], categoryLabel: string, index: number): Promise<File> {
+  const files = await Promise.all(items.map(itemAsJpeg));
+  const images = await Promise.all(files.map(loadImage));
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("No pudimos crear el collage.");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  collageSlots(images.length).forEach(([x, y, width, height], imageIndex) => drawImageCover(context, images[imageIndex], x, y, width, height));
+  context.fillStyle = "rgba(189, 63, 119, .92)";
+  context.fillRect(0, 974, 1080, 106);
+  context.fillStyle = "#ffffff";
+  context.font = "800 42px Arial";
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText(`${categoryLabel} disponibles`, 540, 1027);
+
+  const logoResponse = await fetch("/entre-primas-logo.png");
+  if (!logoResponse.ok) throw new Error("No pudimos agregar el logo al collage.");
+  const logoBlob = await logoResponse.blob();
+  const logo = await loadImage(new File([logoBlob], "entre-primas-logo.png", { type: logoBlob.type || "image/png" }));
+  context.beginPath();
+  context.arc(540, 525, 145, 0, Math.PI * 2);
+  context.fillStyle = "rgba(255, 255, 255, .94)";
+  context.fill();
+  context.drawImage(logo, 410, 395, 260, 260);
+
+  [...images, logo].forEach((image) => { if ("close" in image && typeof image.close === "function") image.close(); });
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", .92));
+  if (!blob) throw new Error("No pudimos guardar el collage.");
+  return new File([blob], `entre-primas-${categoryLabel.toLowerCase()}-${index + 1}.jpg`, { type: "image/jpeg" });
+}
+
+export async function preparePromotionCollages(items: InventoryItem[], category: PromotionCategory): Promise<File[]> {
+  const categoryInfo = PROMOTION_CATEGORIES.find((entry) => entry.key === category);
+  const available = items.filter((item) => item.status === "available" && item.originalImageUrl && promotionCategoryFor(item) === category);
+  if (!available.length || !categoryInfo) throw new Error("No hay productos con foto disponibles en esta categoría.");
+  const groups = balancedGroups(available);
+  return Promise.all(groups.map((group, index) => createCollage(group, categoryInfo.label, index)));
+}
+
 export async function prepareAvailablePhotos(items: InventoryItem[]): Promise<File[]> {
   const available = items.filter((item) => item.status === "available" && item.originalImageUrl);
   if (!available.length) throw new Error("No hay prendas disponibles con foto para descargar.");

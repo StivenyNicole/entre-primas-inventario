@@ -14,4 +14,6 @@ test("renderiza el inventario de Entre Primas", async () => {
   const html = await response.text();
   assert.match(html, /Entre Primas/i);
   assert.match(html, /Inventario compartido/i);
+  assert.match(html, /Resumen de ventas/i);
+  assert.match(html, /Promocionar productos disponibles/i);
 });
