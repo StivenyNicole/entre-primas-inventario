@@ -611,10 +611,10 @@ export default function Home() {
               <label className="photo-input"><span>📷</span><strong>{draftPhoto ? `Foto guardada: ${draftPhoto.name}` : "Tomar o elegir foto"}</strong><small>{draftPhoto ? "Puedes continuar; la foto no se perderá." : "JPG, PNG o WEBP"}</small><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] || null; setDraftPhoto(file); saveDraftPhoto(file).catch(() => undefined); }} /></label>
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required placeholder="Ej. Vestido floral" value={addDraft.name} onChange={(event) => updateDraft("name", event.target.value)} /></label>
-                {categoryUsesSize(addDraft.category) && <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>}
-                <label><span>Color o tono</span><input name="color" placeholder="Ej. Azul cielo" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={addDraft.audience} onChange={(event) => { const audience = event.target.value as ProductAudience; updateDraft("audience", audience); updateDraft("category", PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
                 <label><span>Tipo de producto *</span><select name="category" value={addDraft.category} onChange={(event) => { const category = event.target.value as ProductCategory; updateDraft("category", category); if (!categoryUsesSize(category)) updateDraft("size", ""); }}>{PRODUCT_CATEGORIES[addDraft.audience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
+                {categoryUsesSize(addDraft.category) && <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>}
+                <label><span>Color o tono</span><input name="color" placeholder="Ej. Azul cielo" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required placeholder="65000" inputMode="numeric" value={addDraft.cost} onChange={(event) => updateDraft("cost", event.target.value)} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required placeholder="120000" inputMode="numeric" value={addDraft.price} onChange={(event) => updateDraft("price", event.target.value)} /></label>
                 <label><span>Cantidad de unidades iguales *</span><input name="quantity" type="number" min="1" required inputMode="numeric" value={addDraft.quantity} onChange={(event) => updateDraft("quantity", event.target.value)} /></label>
@@ -642,10 +642,10 @@ export default function Home() {
               </label>
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required defaultValue={editItem.name} /></label>
-                {categoryUsesSize(editCategory) && <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>}
-                <label><span>Color o tono</span><input name="color" defaultValue={editItem.color} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={editAudience} onChange={(event) => { const audience = event.target.value as ProductAudience; setEditAudience(audience); setEditCategory(PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
                 <label><span>Tipo de producto *</span><select name="category" value={editCategory} onChange={(event) => setEditCategory(event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[editAudience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
+                {categoryUsesSize(editCategory) && <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>}
+                <label><span>Color o tono</span><input name="color" defaultValue={editItem.color} /></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required inputMode="numeric" defaultValue={editItem.cost} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required inputMode="numeric" defaultValue={editItem.price} /></label>
                 <label><span>Cantidad disponible *</span><input name="quantity" type="number" min={editItem.status === "available" ? 1 : 0} required inputMode="numeric" defaultValue={editItem.quantity} /></label>
