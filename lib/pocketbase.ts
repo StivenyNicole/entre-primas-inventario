@@ -202,20 +202,20 @@ export type ShareContent = {
 };
 
 export type ProductAudience = "mujer" | "hombre";
-export type ProductCategory = "blusas" | "busos" | "pantalones" | "maquillaje" | "bolsos" | "camisas" | "pantalonetas" | "otros";
+export type ProductCategory = "blusas" | "busos" | "pantalones" | "maquillaje" | "bolsos" | "ropa-interior" | "camisas" | "pantalonetas" | "otros";
 export type PromotionCategory = `${ProductAudience}-${ProductCategory}`;
 
 export const PRODUCT_CATEGORIES: Record<ProductAudience, Array<{ key: ProductCategory; label: string }>> = {
   mujer: [
     { key: "blusas", label: "Blusas" }, { key: "busos", label: "Busos" }, { key: "pantalones", label: "Pantalones" },
-    { key: "maquillaje", label: "Maquillaje" }, { key: "bolsos", label: "Bolsos" }, { key: "otros", label: "Otros" },
+    { key: "maquillaje", label: "Maquillaje" }, { key: "bolsos", label: "Bolsos" }, { key: "ropa-interior", label: "Ropa interior" }, { key: "otros", label: "Otros" },
   ],
   hombre: [
     { key: "busos", label: "Busos" }, { key: "camisas", label: "Camisas" }, { key: "pantalonetas", label: "Pantalonetas" }, { key: "otros", label: "Otros" },
   ],
 };
 
-const CATEGORY_ICONS: Record<ProductCategory, string> = { blusas: "👚", busos: "🧥", pantalones: "👖", maquillaje: "💄", bolsos: "👜", camisas: "👔", pantalonetas: "🩳", otros: "✨" };
+const CATEGORY_ICONS: Record<ProductCategory, string> = { blusas: "👚", busos: "🧥", pantalones: "👖", maquillaje: "💄", bolsos: "👜", "ropa-interior": "🎀", camisas: "👔", pantalonetas: "🩳", otros: "✨" };
 
 export const PROMOTION_CATEGORIES: Array<{ key: PromotionCategory; audience: ProductAudience; category: ProductCategory; label: string; icon: string }> = (["mujer", "hombre"] as ProductAudience[]).flatMap((audience) =>
   PRODUCT_CATEGORIES[audience].map((category) => ({ key: `${audience}-${category.key}` as PromotionCategory, audience, category: category.key, label: category.label, icon: CATEGORY_ICONS[category.key] })),
@@ -228,6 +228,7 @@ function inferredCategory(item: Pick<InventoryItem, "name">): ProductCategory {
   if (/\b(pantalon|pantalones|jean|jeans|legging|leggings|jogger|joggers|short|shorts)\b/.test(name)) return "pantalones";
   if (/\b(maquillaje|labial|base|sombra|pestana|pestanas|rimel|mascara|delineador|polvo|rubor|gloss|corrector)\b/.test(name)) return "maquillaje";
   if (/\b(bolso|bolsos|cartera|carteras|morral|morral|mochila|mochilas)\b/.test(name)) return "bolsos";
+  if (/\b(brasier|brasieres|brassier|brassieres|panty|panties|calzon|calzones|lenceria|ropa interior)\b/.test(name)) return "ropa-interior";
   return "otros";
 }
 
@@ -288,26 +289,63 @@ async function createCollage(items: InventoryItem[], categoryLabel: string, inde
   canvas.height = 1080;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("No pudimos crear el collage.");
-  context.fillStyle = "#ffffff";
+  const categorySeed = Array.from(categoryLabel).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  const variant = (categorySeed + index) % 3;
+  context.fillStyle = variant === 1 ? "#f8dce8" : variant === 2 ? "#f1e9f5" : "#ffffff";
   context.fillRect(0, 0, canvas.width, canvas.height);
   collageSlots(images.length).forEach(([x, y, width, height], imageIndex) => drawImageCover(context, images[imageIndex], x, y, width, height));
-  context.fillStyle = "rgba(189, 63, 119, .92)";
-  context.fillRect(0, 974, 1080, 106);
-  context.fillStyle = "#ffffff";
-  context.font = "800 42px Arial";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(`${categoryLabel} disponibles`, 540, 1027);
 
   const logoResponse = await fetch("/entre-primas-logo.png");
   if (!logoResponse.ok) throw new Error("No pudimos agregar el logo al collage.");
   const logoBlob = await logoResponse.blob();
   const logo = await loadImage(new File([logoBlob], "entre-primas-logo.png", { type: logoBlob.type || "image/png" }));
-  context.beginPath();
-  context.arc(540, 525, 145, 0, Math.PI * 2);
-  context.fillStyle = "rgba(255, 255, 255, .94)";
-  context.fill();
-  context.drawImage(logo, 410, 395, 260, 260);
+  if (variant === 0) {
+    context.beginPath();
+    context.arc(540, 520, 195, 0, Math.PI * 2);
+    context.fillStyle = "rgba(255, 255, 255, .95)";
+    context.fill();
+    context.lineWidth = 9;
+    context.strokeStyle = "rgba(189, 63, 119, .75)";
+    context.stroke();
+    context.drawImage(logo, 370, 350, 340, 340);
+  } else if (variant === 1) {
+    context.fillStyle = "rgba(255, 255, 255, .94)";
+    context.fillRect(310, 350, 460, 350);
+    context.fillStyle = "rgba(189, 63, 119, .9)";
+    context.fillRect(310, 350, 460, 12);
+    context.fillRect(310, 688, 460, 12);
+    context.drawImage(logo, 370, 355, 340, 340);
+  } else {
+    context.beginPath();
+    context.arc(540, 520, 210, 0, Math.PI * 2);
+    context.fillStyle = "rgba(189, 63, 119, .88)";
+    context.fill();
+    context.beginPath();
+    context.arc(540, 520, 184, 0, Math.PI * 2);
+    context.fillStyle = "rgba(255, 255, 255, .96)";
+    context.fill();
+    context.drawImage(logo, 375, 355, 330, 330);
+  }
+
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.font = "800 42px Arial";
+  if (variant === 1) {
+    context.fillStyle = "rgba(255, 255, 255, .94)";
+    context.fillRect(0, 0, 1080, 104);
+    context.fillStyle = "#952957";
+    context.fillText(`${categoryLabel} disponibles`, 540, 52);
+  } else if (variant === 2) {
+    context.fillStyle = "rgba(149, 41, 87, .94)";
+    context.fillRect(150, 958, 780, 98);
+    context.fillStyle = "#ffffff";
+    context.fillText(`${categoryLabel} disponibles`, 540, 1007);
+  } else {
+    context.fillStyle = "rgba(189, 63, 119, .92)";
+    context.fillRect(0, 974, 1080, 106);
+    context.fillStyle = "#ffffff";
+    context.fillText(`${categoryLabel} disponibles`, 540, 1027);
+  }
 
   [...images, logo].forEach((image) => { if ("close" in image && typeof image.close === "function") image.close(); });
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", .92));
