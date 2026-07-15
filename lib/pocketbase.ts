@@ -12,6 +12,7 @@ export type InventoryItem = {
   status: "available" | "sold";
   paymentStatus: "paid" | "partial";
   amountPaid: number;
+  debtorName: string;
   imageUrl: string | null;
   originalImageUrl: string | null;
   soldAt: string | null;
@@ -33,6 +34,7 @@ type PocketBaseRecord = {
   status?: "available" | "sold";
   payment_status?: "paid" | "partial";
   amount_paid?: number;
+  debtor_name?: string;
   photo?: string;
   sold_at?: string;
   created?: string;
@@ -85,6 +87,7 @@ function mapRecord(record: PocketBaseRecord): InventoryItem {
     status: record.status === "sold" ? "sold" : "available",
     paymentStatus: record.payment_status === "partial" ? "partial" : "paid",
     amountPaid: record.payment_status === "partial" ? Number(record.amount_paid || 0) : record.status === "sold" ? Number(record.price || 0) : 0,
+    debtorName: record.debtor_name || "",
     imageUrl,
     originalImageUrl,
     soldAt: record.sold_at || null,
@@ -149,10 +152,10 @@ export async function updateInventoryItem(id: string, form: FormData): Promise<I
   return mapRecord(await parseResponse<PocketBaseRecord>(response));
 }
 
-export async function updateInventoryStatus(id: string, status: "available" | "sold", payment?: { paymentStatus: "paid" | "partial"; amountPaid: number }): Promise<InventoryItem> {
+export async function updateInventoryStatus(id: string, status: "available" | "sold", payment?: { paymentStatus: "paid" | "partial"; amountPaid: number; debtorName?: string }): Promise<InventoryItem> {
   const body = status === "sold"
-    ? { status, quantity: 0, sold_at: new Date().toISOString(), payment_status: payment?.paymentStatus || "paid", amount_paid: payment?.amountPaid || 0 }
-    : { status, quantity: 1, sold_at: "", payment_status: "paid", amount_paid: 0 };
+    ? { status, quantity: 0, sold_at: new Date().toISOString(), payment_status: payment?.paymentStatus || "paid", amount_paid: payment?.amountPaid || 0, debtor_name: payment?.debtorName || "" }
+    : { status, quantity: 1, sold_at: "", payment_status: "paid", amount_paid: 0, debtor_name: "" };
   const response = await fetch(`${PB_URL}/api/collections/${COLLECTION}/records/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
@@ -161,7 +164,7 @@ export async function updateInventoryStatus(id: string, status: "available" | "s
   return mapRecord(await parseResponse<PocketBaseRecord>(response));
 }
 
-export async function sellInventoryUnit(item: InventoryItem, payment: { paymentStatus: "paid" | "partial"; amountPaid: number }): Promise<{ soldItem: InventoryItem; stockItem: InventoryItem | null }> {
+export async function sellInventoryUnit(item: InventoryItem, payment: { paymentStatus: "paid" | "partial"; amountPaid: number; debtorName?: string }): Promise<{ soldItem: InventoryItem; stockItem: InventoryItem | null }> {
   if (item.quantity <= 1) {
     return { soldItem: await updateInventoryStatus(item.id, "sold", payment), stockItem: null };
   }
@@ -180,6 +183,7 @@ export async function sellInventoryUnit(item: InventoryItem, payment: { paymentS
   form.set("sold_at", soldAt);
   form.set("payment_status", payment.paymentStatus);
   form.set("amount_paid", String(payment.amountPaid));
+  form.set("debtor_name", payment.debtorName || "");
   if (item.originalImageUrl) {
     const photoResponse = await fetch(`/api/photo?url=${encodeURIComponent(item.originalImageUrl)}`);
     if (photoResponse.ok) {
@@ -455,6 +459,7 @@ export async function prepareInventorySale(item: InventoryItem): Promise<ShareCo
     item.color ? `Color: ${item.color}` : "",
     `Precio: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.price)}`,
     item.paymentStatus === "partial" ? `Pago recibido: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.amountPaid)}` : "Pago recibido: completo",
+    item.paymentStatus === "partial" && item.debtorName ? `Quedó debiendo: ${item.debtorName}` : "",
     item.paymentStatus === "partial" ? `Saldo pendiente: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(pending)}` : "",
   ].filter(Boolean).join("\n");
   const file = item.originalImageUrl ? await itemAsJpeg(item) : null;
