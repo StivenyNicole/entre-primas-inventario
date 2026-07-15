@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { completeInventoryPayment, createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sellInventoryUnit, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
+import { categoryUsesSize, completeInventoryPayment, createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sellInventoryUnit, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
 
 type Item = {
   id: string;
@@ -232,7 +232,9 @@ export default function Home() {
     if (!editItem) return;
     setSaving(true);
     try {
-      const updated = await updateInventoryItem(editItem.id, new FormData(event.currentTarget));
+      const formData = new FormData(event.currentTarget);
+      if (!categoryUsesSize(editCategory)) formData.set("size", "");
+      const updated = await updateInventoryItem(editItem.id, formData);
       setItems((current) => current.map((row) => row.id === updated.id ? updated : row));
       setEditItem(null);
       flash(`${updated.name} quedó actualizada`);
@@ -478,7 +480,7 @@ export default function Home() {
                   <div><button type="button" className="product-title-button" onClick={() => setDetailItem(item)}>{item.name}</button></div>
                   <strong className="price">{money.format(item.price)}</strong>
                 </div>
-                <div className="tags"><span>{productCategoryLabel(item)}</span><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span>{item.status === "available" && <span className="stock-tag">{item.quantity} {item.quantity === 1 ? "unidad" : "unidades"}</span>}</div>
+                <div className="tags"><span>{productCategoryLabel(item)}</span>{categoryUsesSize(productClassificationFor(item).category) && <span>Talla {item.size || "—"}</span>}<span>{item.color || "Sin color"}</span>{item.status === "available" && <span className="stock-tag">{item.quantity} {item.quantity === 1 ? "unidad" : "unidades"}</span>}</div>
                 <div className="cost-row"><span>Costo</span><strong>{money.format(item.cost)}</strong></div>
                 {item.status === "sold" && (
                   <div className={`sold-info ${item.paymentStatus === "partial" ? "payment-pending" : ""}`}><strong>{item.paymentStatus === "partial" ? `${item.debtorName || "Pago pendiente"} debe ${money.format(Math.max(0, item.price - item.amountPaid))}` : "Vendida · pago completo"}</strong><span>{item.soldAt ? new Date(item.soldAt).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : ""}</span></div>
@@ -569,7 +571,7 @@ export default function Home() {
               <p className="eyebrow">{productClassificationFor(detailItem).audience === "hombre" ? "Para hombre" : "Para mujer"} · {productCategoryLabel(detailItem)}</p>
               <h2 id="detail-title">{detailItem.name}</h2>
               <div className="detail-grid">
-                <div><span>Talla</span><strong>{detailItem.size || "Sin talla"}</strong></div>
+                {categoryUsesSize(productClassificationFor(detailItem).category) && <div><span>Talla</span><strong>{detailItem.size || "Sin talla"}</strong></div>}
                 <div><span>Color</span><strong>{detailItem.color || "Sin color"}</strong></div>
                 {detailItem.status === "available" && <div><span>Cantidad disponible</span><strong>{detailItem.quantity} {detailItem.quantity === 1 ? "unidad" : "unidades"}</strong></div>}
                 <div><span>Costo</span><strong>{money.format(detailItem.cost)}</strong></div>
@@ -609,10 +611,10 @@ export default function Home() {
               <label className="photo-input"><span>📷</span><strong>{draftPhoto ? `Foto guardada: ${draftPhoto.name}` : "Tomar o elegir foto"}</strong><small>{draftPhoto ? "Puedes continuar; la foto no se perderá." : "JPG, PNG o WEBP"}</small><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] || null; setDraftPhoto(file); saveDraftPhoto(file).catch(() => undefined); }} /></label>
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required placeholder="Ej. Vestido floral" value={addDraft.name} onChange={(event) => updateDraft("name", event.target.value)} /></label>
-                <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>
+                {categoryUsesSize(addDraft.category) && <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>}
                 <label><span>Color o tono</span><input name="color" placeholder="Ej. Azul cielo" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={addDraft.audience} onChange={(event) => { const audience = event.target.value as ProductAudience; updateDraft("audience", audience); updateDraft("category", PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
-                <label><span>Tipo de producto *</span><select name="category" value={addDraft.category} onChange={(event) => updateDraft("category", event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[addDraft.audience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
+                <label><span>Tipo de producto *</span><select name="category" value={addDraft.category} onChange={(event) => { const category = event.target.value as ProductCategory; updateDraft("category", category); if (!categoryUsesSize(category)) updateDraft("size", ""); }}>{PRODUCT_CATEGORIES[addDraft.audience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required placeholder="65000" inputMode="numeric" value={addDraft.cost} onChange={(event) => updateDraft("cost", event.target.value)} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required placeholder="120000" inputMode="numeric" value={addDraft.price} onChange={(event) => updateDraft("price", event.target.value)} /></label>
                 <label><span>Cantidad de unidades iguales *</span><input name="quantity" type="number" min="1" required inputMode="numeric" value={addDraft.quantity} onChange={(event) => updateDraft("quantity", event.target.value)} /></label>
@@ -640,7 +642,7 @@ export default function Home() {
               </label>
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required defaultValue={editItem.name} /></label>
-                <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>
+                {categoryUsesSize(editCategory) && <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>}
                 <label><span>Color o tono</span><input name="color" defaultValue={editItem.color} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={editAudience} onChange={(event) => { const audience = event.target.value as ProductAudience; setEditAudience(audience); setEditCategory(PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
                 <label><span>Tipo de producto *</span><select name="category" value={editCategory} onChange={(event) => setEditCategory(event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[editAudience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>

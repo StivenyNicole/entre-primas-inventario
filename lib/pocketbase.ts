@@ -316,6 +316,10 @@ export function productCategoryLabel(item: Pick<InventoryItem, "name" | "audienc
   return PRODUCT_CATEGORIES[classification.audience].find((entry) => entry.key === classification.category)?.label || "Otros";
 }
 
+export function categoryUsesSize(category: ProductCategory): boolean {
+  return category !== "maquillaje" && category !== "bolsos";
+}
+
 function balancedGroups<T>(items: T[]): T[][] {
   const groupCount = Math.ceil(items.length / 4);
   const baseSize = Math.floor(items.length / groupCount);
@@ -455,7 +459,7 @@ export async function prepareInventorySale(item: InventoryItem): Promise<ShareCo
     "✅ PRENDA VENDIDA · ENTRE PRIMAS",
     "",
     `Prenda: ${item.name}`,
-    item.size ? `Talla: ${item.size}` : "",
+    categoryUsesSize(productClassificationFor(item).category) && item.size ? `Talla: ${item.size}` : "",
     item.color ? `Color: ${item.color}` : "",
     `Precio: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.price)}`,
     item.paymentStatus === "partial" ? `Pago recibido: ${new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(item.amountPaid)}` : "Pago recibido: completo",
