@@ -96,6 +96,7 @@ export default function Home() {
   const [deleteItem, setDeleteItem] = useState<Item | null>(null);
   const [settleItem, setSettleItem] = useState<Item | null>(null);
   const [restoreItem, setRestoreItem] = useState<Item | null>(null);
+  const [showPendingDebts, setShowPendingDebts] = useState(false);
   const [shareItem, setShareItem] = useState<Item | null>(null);
   const [saleShare, setSaleShare] = useState<ShareContent | null>(null);
   const [availableFiles, setAvailableFiles] = useState<File[] | null>(null);
@@ -158,6 +159,8 @@ export default function Home() {
   const soldItems = useMemo(() => items
     .filter((item) => item.status === "sold")
     .sort((a, b) => (b.soldAt || "").localeCompare(a.soldAt || "")), [items]);
+
+  const pendingItems = useMemo(() => soldItems.filter((item) => item.paymentStatus === "partial" && item.price > item.amountPaid), [soldItems]);
 
   const salesSummary = useMemo(() => soldItems.reduce((summary, item) => ({
     revenue: summary.revenue + item.price,
@@ -505,7 +508,7 @@ export default function Home() {
         <div className="finance-grid">
           <article className="finance-card revenue-card"><span>Total vendido</span><strong>{money.format(salesSummary.revenue)}</strong><small>Valor de todas las ventas</small></article>
           <article className="finance-card received-card"><span>Dinero recibido</span><strong>{money.format(salesSummary.received)}</strong><small>Lo que realmente han pagado</small></article>
-          <article className="finance-card pending-card"><span>Pendiente por cobrar</span><strong>{money.format(salesSummary.pending)}</strong><small>Deudas de pagos parciales</small></article>
+          <button type="button" className="finance-card pending-card interactive-finance" onClick={() => setShowPendingDebts(true)}><span>Pendiente por cobrar</span><strong>{money.format(salesSummary.pending)}</strong><small>{pendingItems.length ? `Ver ${pendingItems.length} ${pendingItems.length === 1 ? "deuda" : "deudas"}` : "No hay deudas pendientes"}</small></button>
           <article className="finance-card cost-card"><span>Costos</span><strong>{money.format(salesSummary.cost)}</strong><small>Lo invertido en lo vendido</small></article>
           <article className="finance-card profit-card"><span>Ganancia</span><strong>{money.format(salesSummary.profit)}</strong><small>Ventas menos costos</small></article>
         </div>
@@ -578,6 +581,19 @@ export default function Home() {
               {detailItem.status === "sold" && detailItem.soldAt && <p className="detail-sold-date">Vendida el {new Date(detailItem.soldAt).toLocaleString("es-CO", { dateStyle: "long", timeStyle: "short" })}</p>}
               <button className="edit-button detail-edit" onClick={() => { setDetailItem(null); beginEdit(detailItem); }}>✎ Editar esta prenda</button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {showPendingDebts && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setShowPendingDebts(false)}>
+          <section className="pending-modal" role="dialog" aria-modal="true" aria-labelledby="pending-title">
+            <button className="modal-close" onClick={() => setShowPendingDebts(false)} aria-label="Cerrar">×</button>
+            <p className="eyebrow">Control de deudas</p>
+            <h2 id="pending-title">Pendiente por cobrar</h2>
+            <div className="pending-total"><span>Total pendiente</span><strong>{money.format(salesSummary.pending)}</strong></div>
+            {pendingItems.length ? <div className="pending-debt-list">{pendingItems.map((item) => <button type="button" key={`debt-${item.id}`} onClick={() => { setShowPendingDebts(false); setDetailItem(item); }}><div><strong>{item.debtorName || "Persona sin nombre"}</strong><span>{item.name} · {item.color || "Sin color"}</span><small>{item.soldAt ? new Date(item.soldAt).toLocaleDateString("es-CO", { dateStyle: "medium" }) : "Venta pendiente"}</small></div><strong>{money.format(Math.max(0, item.price - item.amountPaid))}</strong></button>)}</div> : <p className="business-empty">No hay pagos pendientes en este momento.</p>}
+            <button className="cancel full" onClick={() => setShowPendingDebts(false)}>Cerrar</button>
           </section>
         </div>
       )}
