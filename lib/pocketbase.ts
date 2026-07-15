@@ -8,6 +8,7 @@ export type InventoryItem = {
   category: ProductCategory | "";
   cost: number;
   price: number;
+  quantity: number;
   status: "available" | "sold";
   paymentStatus: "paid" | "partial";
   amountPaid: number;
@@ -28,6 +29,7 @@ type PocketBaseRecord = {
   category?: ProductCategory;
   cost?: number;
   price?: number;
+  quantity?: number;
   status?: "available" | "sold";
   payment_status?: "paid" | "partial";
   amount_paid?: number;
@@ -79,6 +81,7 @@ function mapRecord(record: PocketBaseRecord): InventoryItem {
     category: record.category || "",
     cost: Number(record.cost || 0),
     price: Number(record.price || 0),
+    quantity: record.status === "sold" ? Math.max(0, Number(record.quantity || 0)) : Math.max(1, Number(record.quantity || 1)),
     status: record.status === "sold" ? "sold" : "available",
     paymentStatus: record.payment_status === "partial" ? "partial" : "paid",
     amountPaid: record.payment_status === "partial" ? Number(record.amount_paid || 0) : record.status === "sold" ? Number(record.price || 0) : 0,
@@ -148,14 +151,56 @@ export async function updateInventoryItem(id: string, form: FormData): Promise<I
 
 export async function updateInventoryStatus(id: string, status: "available" | "sold", payment?: { paymentStatus: "paid" | "partial"; amountPaid: number }): Promise<InventoryItem> {
   const body = status === "sold"
-    ? { status, sold_at: new Date().toISOString(), payment_status: payment?.paymentStatus || "paid", amount_paid: payment?.amountPaid || 0 }
-    : { status, sold_at: "", payment_status: "paid", amount_paid: 0 };
+    ? { status, quantity: 0, sold_at: new Date().toISOString(), payment_status: payment?.paymentStatus || "paid", amount_paid: payment?.amountPaid || 0 }
+    : { status, quantity: 1, sold_at: "", payment_status: "paid", amount_paid: 0 };
   const response = await fetch(`${PB_URL}/api/collections/${COLLECTION}/records/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
   return mapRecord(await parseResponse<PocketBaseRecord>(response));
+}
+
+export async function sellInventoryUnit(item: InventoryItem, payment: { paymentStatus: "paid" | "partial"; amountPaid: number }): Promise<{ soldItem: InventoryItem; stockItem: InventoryItem | null }> {
+  if (item.quantity <= 1) {
+    return { soldItem: await updateInventoryStatus(item.id, "sold", payment), stockItem: null };
+  }
+
+  const soldAt = new Date().toISOString();
+  const form = new FormData();
+  form.set("name", item.name);
+  form.set("size", item.size);
+  form.set("color", item.color);
+  form.set("cost", String(item.cost));
+  form.set("price", String(item.price));
+  form.set("quantity", "0");
+  form.set("audience", item.audience);
+  if (item.category) form.set("category", item.category);
+  form.set("status", "sold");
+  form.set("sold_at", soldAt);
+  form.set("payment_status", payment.paymentStatus);
+  form.set("amount_paid", String(payment.amountPaid));
+  if (item.originalImageUrl) {
+    const photoResponse = await fetch(`/api/photo?url=${encodeURIComponent(item.originalImageUrl)}`);
+    if (photoResponse.ok) {
+      const photo = await photoResponse.blob();
+      form.set("photo", new File([photo], `${safeFileName(item)}.webp`, { type: photo.type || "image/webp" }));
+    }
+  }
+
+  const soldResponse = await fetch(`${PB_URL}/api/collections/${COLLECTION}/records`, { method: "POST", body: form });
+  const soldItem = mapRecord(await parseResponse<PocketBaseRecord>(soldResponse));
+  try {
+    const stockResponse = await fetch(`${PB_URL}/api/collections/${COLLECTION}/records/${encodeURIComponent(item.id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ quantity: item.quantity - 1 }),
+    });
+    return { soldItem, stockItem: mapRecord(await parseResponse<PocketBaseRecord>(stockResponse)) };
+  } catch (error) {
+    await fetch(`${PB_URL}/api/collections/${COLLECTION}/records/${encodeURIComponent(soldItem.id)}`, { method: "DELETE" }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function completeInventoryPayment(id: string, amountPaid: number): Promise<InventoryItem> {

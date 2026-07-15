@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { completeInventoryPayment, createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
+import { completeInventoryPayment, createInventoryItem, deleteInventoryItem, downloadPreparedFiles, listInventory, prepareAvailablePhotos, prepareInventorySale, preparePromotionCollages, PRODUCT_CATEGORIES, PROMOTION_CATEGORIES, productCategoryLabel, productClassificationFor, promotionCategoryFor, sellInventoryUnit, sharePreparedContent, type ProductAudience, type ProductCategory, type PromotionCategory, type ShareContent, updateInventoryItem, updateInventoryStatus } from "../lib/pocketbase";
 
 type Item = {
   id: string;
@@ -13,6 +13,7 @@ type Item = {
   category: ProductCategory | "";
   cost: number;
   price: number;
+  quantity: number;
   status: "available" | "sold";
   paymentStatus: "paid" | "partial";
   amountPaid: number;
@@ -30,9 +31,10 @@ type AddDraft = {
   category: ProductCategory;
   cost: string;
   price: string;
+  quantity: string;
 };
 
-const emptyDraft: AddDraft = { name: "", size: "", color: "", audience: "mujer", category: "blusas", cost: "", price: "" };
+const emptyDraft: AddDraft = { name: "", size: "", color: "", audience: "mujer", category: "blusas", cost: "", price: "", quantity: "1" };
 const DRAFT_KEY = "entre-primas-nueva-prenda";
 const PHOTO_DRAFT_KEY = "nueva-prenda-foto";
 
@@ -139,7 +141,7 @@ export default function Home() {
   }, []);
 
   const counts = useMemo(() => ({
-    available: items.filter((item) => item.status === "available").length,
+    available: items.filter((item) => item.status === "available").reduce((total, item) => total + item.quantity, 0),
     sold: items.filter((item) => item.status === "sold").length,
   }), [items]);
 
@@ -244,17 +246,22 @@ export default function Home() {
   async function updateStatus(item: Item, status: "available" | "sold", payment?: { paymentStatus: "paid" | "partial"; amountPaid: number }) {
     setSaving(true);
     try {
-      const updated = await updateInventoryStatus(item.id, status, payment);
-      setItems((current) => current.map((row) => row.id === item.id ? updated : row));
       setConfirmItem(null);
       if (status === "sold") {
+        if (!payment) throw new Error("Falta indicar cómo pagaron la venta.");
+        const { soldItem, stockItem } = await sellInventoryUnit(item, payment);
+        setItems((current) => stockItem
+          ? [soldItem, ...current.map((row) => row.id === item.id ? stockItem : row)]
+          : current.map((row) => row.id === item.id ? soldItem : row));
         setSaleShare(null);
-        setShareItem(updated);
-        prepareInventorySale(updated)
+        setShareItem(soldItem);
+        prepareInventorySale(soldItem)
           .then(setSaleShare)
           .catch((error) => setNotice(error instanceof Error ? error.message : "No se pudo preparar la foto para compartir"));
-        flash(`${item.name} quedó marcada como vendida`);
+        flash(stockItem ? `${item.name}: queda${stockItem.quantity === 1 ? "" : "n"} ${stockItem.quantity} en inventario` : `${item.name} quedó agotada`);
       } else {
+        const updated = await updateInventoryStatus(item.id, status);
+        setItems((current) => current.map((row) => row.id === item.id ? updated : row));
         flash(`${item.name} volvió a disponibles`);
       }
     } catch (error) {
@@ -459,7 +466,7 @@ export default function Home() {
                   <div><button type="button" className="product-title-button" onClick={() => setDetailItem(item)}>{item.name}</button></div>
                   <strong className="price">{money.format(item.price)}</strong>
                 </div>
-                <div className="tags"><span>{productCategoryLabel(item)}</span><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span></div>
+                <div className="tags"><span>{productCategoryLabel(item)}</span><span>Talla {item.size || "—"}</span><span>{item.color || "Sin color"}</span>{item.status === "available" && <span className="stock-tag">{item.quantity} {item.quantity === 1 ? "unidad" : "unidades"}</span>}</div>
                 <div className="cost-row"><span>Costo</span><strong>{money.format(item.cost)}</strong></div>
                 {item.status === "sold" && (
                   <div className={`sold-info ${item.paymentStatus === "partial" ? "payment-pending" : ""}`}><strong>{item.paymentStatus === "partial" ? `Vendida · deben ${money.format(Math.max(0, item.price - item.amountPaid))}` : "Vendida · pago completo"}</strong><span>{item.soldAt ? new Date(item.soldAt).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" }) : ""}</span></div>
@@ -552,6 +559,7 @@ export default function Home() {
               <div className="detail-grid">
                 <div><span>Talla</span><strong>{detailItem.size || "Sin talla"}</strong></div>
                 <div><span>Color</span><strong>{detailItem.color || "Sin color"}</strong></div>
+                {detailItem.status === "available" && <div><span>Cantidad disponible</span><strong>{detailItem.quantity} {detailItem.quantity === 1 ? "unidad" : "unidades"}</strong></div>}
                 <div><span>Costo</span><strong>{money.format(detailItem.cost)}</strong></div>
                 <div className="detail-price"><span>Precio de venta</span><strong>{money.format(detailItem.price)}</strong></div>
                 <div className="detail-profit"><span>Ganancia esperada</span><strong>{money.format(detailItem.price - detailItem.cost)}</strong></div>
@@ -576,12 +584,14 @@ export default function Home() {
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required placeholder="Ej. Vestido floral" value={addDraft.name} onChange={(event) => updateDraft("name", event.target.value)} /></label>
                 <label><span>Talla</span><input name="size" placeholder="M" value={addDraft.size} onChange={(event) => updateDraft("size", event.target.value)} /></label>
-                <label><span>Color</span><input name="color" placeholder="Azul" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
+                <label><span>Color o tono</span><input name="color" placeholder="Ej. Azul cielo" value={addDraft.color} onChange={(event) => updateDraft("color", event.target.value)} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={addDraft.audience} onChange={(event) => { const audience = event.target.value as ProductAudience; updateDraft("audience", audience); updateDraft("category", PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
                 <label><span>Tipo de producto *</span><select name="category" value={addDraft.category} onChange={(event) => updateDraft("category", event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[addDraft.audience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required placeholder="65000" inputMode="numeric" value={addDraft.cost} onChange={(event) => updateDraft("cost", event.target.value)} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required placeholder="120000" inputMode="numeric" value={addDraft.price} onChange={(event) => updateDraft("price", event.target.value)} /></label>
+                <label><span>Cantidad de unidades iguales *</span><input name="quantity" type="number" min="1" required inputMode="numeric" value={addDraft.quantity} onChange={(event) => updateDraft("quantity", event.target.value)} /></label>
               </div>
+              <p className="variation-help">Si cambia la talla, el color o el tono, agrégala como otra ficha. Usa Cantidad solamente para unidades completamente iguales.</p>
               <div className="modal-actions"><button type="button" className="cancel" onClick={closeAddForm}>Cancelar</button><button className="save" disabled={saving}>{saving ? "Guardando…" : "Guardar prenda"}</button></div>
             </form>
           </section>
@@ -605,11 +615,12 @@ export default function Home() {
               <div className="form-grid">
                 <label className="wide"><span>Nombre de la prenda *</span><input name="name" required defaultValue={editItem.name} /></label>
                 <label><span>Talla</span><input name="size" defaultValue={editItem.size} /></label>
-                <label><span>Color</span><input name="color" defaultValue={editItem.color} /></label>
+                <label><span>Color o tono</span><input name="color" defaultValue={editItem.color} /></label>
                 <label><span>¿Para quién es? *</span><select name="audience" value={editAudience} onChange={(event) => { const audience = event.target.value as ProductAudience; setEditAudience(audience); setEditCategory(PRODUCT_CATEGORIES[audience][0].key); }}><option value="mujer">Mujer</option><option value="hombre">Hombre</option></select></label>
                 <label><span>Tipo de producto *</span><select name="category" value={editCategory} onChange={(event) => setEditCategory(event.target.value as ProductCategory)}>{PRODUCT_CATEGORIES[editAudience].map((category) => <option value={category.key} key={category.key}>{category.label}</option>)}</select></label>
                 <label><span>Costo *</span><input name="cost" type="number" min="0" required inputMode="numeric" defaultValue={editItem.cost} /></label>
                 <label><span>Precio de venta *</span><input name="price" type="number" min="0" required inputMode="numeric" defaultValue={editItem.price} /></label>
+                <label><span>Cantidad disponible *</span><input name="quantity" type="number" min={editItem.status === "available" ? 1 : 0} required inputMode="numeric" defaultValue={editItem.quantity} /></label>
               </div>
               <div className="modal-actions">
                 <button type="button" className="cancel" onClick={() => setEditItem(null)}>Cancelar</button>
@@ -628,6 +639,7 @@ export default function Home() {
             <h2 id="confirm-title">¿Vendiste {confirmItem.name}?</h2>
             <p>Indica cómo pagó la clienta. La otra socia verá la venta inmediatamente.</p>
             <div className="confirm-details"><span>Precio de venta</span><strong>{money.format(confirmItem.price)}</strong></div>
+            {confirmItem.quantity > 1 && <p className="stock-after-sale">Se venderá 1 unidad y quedarán <strong>{confirmItem.quantity - 1}</strong> disponibles.</p>}
             <div className="payment-options" role="group" aria-label="Forma de pago">
               <button type="button" className={paymentMode === "paid" ? "active" : ""} onClick={() => setPaymentMode("paid")}><strong>Pago completo</strong><span>Pagaron todo</span></button>
               <button type="button" className={paymentMode === "partial" ? "active" : ""} onClick={() => setPaymentMode("partial")}><strong>Pago parcial</strong><span>Quedaron debiendo</span></button>
