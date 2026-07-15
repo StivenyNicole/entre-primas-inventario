@@ -513,6 +513,7 @@ export default function Home() {
           <button type="button" className="finance-card pending-card interactive-finance" onClick={() => setShowPendingDebts(true)}><span>Pendiente por cobrar</span><strong>{money.format(salesSummary.pending)}</strong><small>{pendingItems.length ? `Ver ${pendingItems.length} ${pendingItems.length === 1 ? "deuda" : "deudas"}` : "No hay deudas pendientes"}</small></button>
           <article className="finance-card cost-card"><span>Costos</span><strong>{money.format(salesSummary.cost)}</strong><small>Lo invertido en lo vendido</small></article>
           <article className="finance-card profit-card"><span>Ganancia</span><strong>{money.format(salesSummary.profit)}</strong><small>Ventas menos costos</small></article>
+          <article className="finance-card partner-card"><span>Para cada socia</span><strong>{money.format(salesSummary.profit / 3)}</strong><small>Ganancia total dividida entre 3</small></article>
         </div>
         {soldItems.length > 0 ? (
           <div className="sales-list">
